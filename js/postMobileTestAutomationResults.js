@@ -11,8 +11,8 @@
  * 3. Commit + push test files in the automation repo (src/tests/)
  * 4. Create or find PR in the test automation repository
  * 5. Find the feature PR in the main app repository (by trigger ticket key)
- * 6. Add configurable pass/fail labels to the feature PR (via dmtools github_add_pr_label)
- * 7. Append test summary to the feature PR description (via gh pr edit)
+ * 6. Add configurable pass/fail labels to the feature PR/MR
+ * 7. Append test summary to the feature PR/MR as a comment
  * 8. Post Jira comment on the trigger ticket
  * 9. Move trigger ticket status (Passed / Failed / Blocked)
  * 10. Remove WIP and SM trigger labels
@@ -31,9 +31,38 @@
 var configLoader = require('./configLoader.js');
 const { STATUSES, LABELS } = require('./config.js');
 var prHelper = require('./common/pullRequest.js');
+var outputFiles = require('./common/outputFiles.js');
 
 /** Marker file path to prevent infinite resume loops. */
 var RESUME_MARKER = 'outputs/.missing-output-resume-attempted';
+
+function createScmCompat(config, owner, repo) {
+    var scopedConfig = Object.assign({}, config || {});
+    if (owner && repo) {
+        scopedConfig.repository = { owner: owner, repo: repo };
+    }
+    try {
+        return configLoader.createScm(scopedConfig);
+    } catch (e) {
+        console.warn('SCM abstraction unavailable, falling back to GitHub globals:', e.message || e);
+        return {
+            listPrs: function(state) {
+                var raw = github_list_prs({ workspace: owner, repository: repo, state: state });
+                var parsed = parseMcpResult(raw);
+                return Array.isArray(parsed) ? parsed : (parsed && parsed.data ? parsed.data : []);
+            },
+            addLabel: function(prNumber, label) {
+                return github_add_pr_label({ workspace: owner, repository: repo, pullRequestId: String(prNumber), label: label });
+            },
+            removeLabel: function(prNumber, label) {
+                return github_remove_pr_label({ workspace: owner, repository: repo, pullRequestId: String(prNumber), label: label });
+            },
+            addComment: function(prNumber, text) {
+                return github_add_pr_comment({ workspace: owner, repository: repo, pullRequestId: String(prNumber), text: text });
+            }
+        };
+    }
+}
 
 /**
  * If mandatory output files are missing and a resume has not already been attempted,
@@ -45,13 +74,13 @@ var RESUME_MARKER = 'outputs/.missing-output-resume-attempted';
  * Returns false if outputs already exist, or a resume was already attempted.
  */
 function attemptResumeIfOutputsMissing(ticketKey, workingDir) {
-    var resultJson = readOutputFile('outputs/test_automation_result.json', workingDir);
+    var resultJson = readOutputFile('test_automation_result.json', workingDir, ticketKey);
     if (resultJson) {
         return false; // outputs present — no resume needed
     }
 
     // Guard against infinite loops
-    var alreadyAttempted = readOutputFile(RESUME_MARKER, workingDir);
+    var alreadyAttempted = readOutputFile(RESUME_MARKER, workingDir, ticketKey);
     if (alreadyAttempted) {
         console.warn('⚠️  Resume already attempted once — skipping second resume to avoid infinite loop');
         return false;
@@ -126,31 +155,19 @@ function cleanCommandOutput(output) {
 }
 
 function readFile(path) {
-    try {
-        var content = file_read({ path: path });
-        return (content && content.trim()) ? content : null;
-    } catch (e) {
-        console.warn('Could not read file ' + path + ':', e);
-        return null;
-    }
+    return outputFiles.readOutputFile(path, {});
 }
 
-/** Read a file from outputs/, falling back to {workingDir}/outputs/ if not found at workspace root. */
-function readOutputFile(relativePath, workingDir) {
-    var content = readFile(relativePath);
-    if (content) return content;
-    if (workingDir) {
-        content = readFile(workingDir + '/' + relativePath);
-        if (content) {
-            console.log('Read from fallback path:', workingDir + '/' + relativePath);
-            return content;
-        }
-    }
-    return null;
+/** Read an output file from normalized paths (root outputs, ticket subdir, and workingDir variants). */
+function readOutputFile(relativePath, workingDir, ticketKey) {
+    return outputFiles.readOutputFile(relativePath, {
+        workingDir: workingDir,
+        ticketKey: ticketKey
+    });
 }
 
-function readResultJson(workingDir) {
-    var raw = readOutputFile('outputs/test_automation_result.json', workingDir);
+function readResultJson(workingDir, ticketKey) {
+    var raw = readOutputFile('test_automation_result.json', workingDir, ticketKey);
     if (!raw) {
         console.warn('test_automation_result.json not found in outputs/ or ' + (workingDir || 'no') + '/outputs/');
         return null;
@@ -280,14 +297,15 @@ function performGitOperations(branchName, commitMessage, workingDir, testFilesPa
 }
 
 /** Create PR in the automation repo (or find existing). */
-function createAutomationPR(title, branchName, baseBranch, workingDir) {
+function createAutomationPR(title, branchName, baseBranch, workingDir, scm) {
     var result = prHelper.createPullRequest({
         title: title,
         branchName: branchName,
         baseBranch: baseBranch,
         workingDir: workingDir,
+        scm: scm,
         runCommand: runInRepo,
-        readFile: function(path) { return readOutputFile(path, workingDir); },
+        readFile: function(path) { return readOutputFile(path, workingDir, null); },
         writeFile: file_write,
         bodyFileCandidates: ['outputs/pr_body.md', 'outputs/response.md'],
         defaultBody: 'Automated test flows'
@@ -297,12 +315,11 @@ function createAutomationPR(title, branchName, baseBranch, workingDir) {
 }
 
 /**
- * Find the feature PR in the main app repo by trigger ticket key.
- * Uses dmtools github_list_prs — filters by title or head branch containing ticketKey.
+ * Find the feature PR/MR in the main app repo by trigger ticket key.
  */
-function findFeaturePR(ticketKey, owner, repo) {
+function findFeaturePR(ticketKey, scm, owner, repo) {
     try {
-        var raw = github_list_prs({ workspace: owner, repository: repo, state: 'open' });
+        var raw = scm.listPrs('open');
         var parsed = parseMcpResult(raw);
         var prs = Array.isArray(parsed) ? parsed : (parsed && parsed.data ? parsed.data : []);
 
@@ -346,6 +363,19 @@ function updateFeaturePRLabel(owner, repo, prNumber, passed, labelPassed, labelF
     }
 }
 
+function updateFeaturePRLabelWithScm(scm, prNumber, passed, labelPassed, labelFailed) {
+    var addLabel = passed ? labelPassed : labelFailed;
+    var removeLabel = passed ? labelFailed : labelPassed;
+
+    try {
+        try { scm.removeLabel(prNumber, removeLabel); } catch (_) {}
+        scm.addLabel(prNumber, addLabel);
+        console.log('✅ Added label "' + addLabel + '" to feature PR/MR #' + prNumber);
+    } catch (e) {
+        console.warn('Failed to update feature PR/MR label:', e);
+    }
+}
+
 /** Post test result summary as a comment on the feature PR. */
 function buildFeatureVerdictSummary(result) {
     var counts = getResultCounts(result || {});
@@ -362,11 +392,11 @@ function buildFeatureVerdictSummary(result) {
         '| ' + counts.passed + ' | ' + counts.failed + ' | ' + counts.skipped + ' |\n\n';
 }
 
-function updateFeaturePRBody(owner, repo, prNumber, workingDir, result) {
-    var summaryFile = readOutputFile('outputs/pr_feature_update.md', workingDir);
+function updateFeaturePRBody(owner, repo, prNumber, workingDir, result, ticketKey) {
+    var summaryFile = readOutputFile('pr_feature_update.md', workingDir, ticketKey);
     if (!summaryFile) {
         // Fallback: use pr_body.md (automation PR description) which has the same test results
-        summaryFile = readOutputFile('outputs/pr_body.md', workingDir);
+        summaryFile = readOutputFile('pr_body.md', workingDir, ticketKey);
         if (summaryFile) {
             console.log('No outputs/pr_feature_update.md — falling back to outputs/pr_body.md');
         }
@@ -397,6 +427,38 @@ function updateFeaturePRBody(owner, repo, prNumber, workingDir, result) {
         console.log('✅ Posted test summary as PR comment on feature PR #' + prNumber);
     } catch (e) {
         console.warn('Failed to post PR comment:', e);
+    }
+}
+
+function updateFeaturePRBodyWithScm(scm, prNumber, workingDir, result, ticketKey) {
+    var summaryFile = readOutputFile('pr_feature_update.md', workingDir, ticketKey);
+    if (!summaryFile) {
+        summaryFile = readOutputFile('pr_body.md', workingDir, ticketKey);
+        if (summaryFile) {
+            console.log('No outputs/pr_feature_update.md — falling back to outputs/pr_body.md');
+        }
+    }
+    if (!summaryFile) {
+        console.log('No outputs/pr_feature_update.md or pr_body.md — skipping feature PR/MR comment');
+        return;
+    }
+
+    if (result) {
+        var lower = summaryFile.toLowerCase();
+        var hasVerdict = lower.indexOf('verdict') !== -1 ||
+            lower.indexOf('test results') !== -1 ||
+            lower.indexOf('passed') !== -1 ||
+            lower.indexOf('failed') !== -1;
+        if (!hasVerdict) {
+            summaryFile = buildFeatureVerdictSummary(result) + summaryFile;
+        }
+    }
+
+    try {
+        scm.addComment(prNumber, summaryFile);
+        console.log('✅ Posted test summary as PR/MR comment on feature PR/MR #' + prNumber);
+    } catch (e) {
+        console.warn('Failed to post PR/MR comment:', e);
     }
 }
 
@@ -454,12 +516,14 @@ function action(params) {
         var ticketSummary = params.ticket.fields ? params.ticket.fields.summary : ticketKey;
         var jiraComment = params.response || '';
         var config = configLoader.loadProjectConfig(params.jobParams || params);
+        var automationScm = createScmCompat(config, config.repository && config.repository.owner, config.repository && config.repository.repo);
         var workingDir = config.workingDir;
 
         var customParams = (params.jobParams || params).customParams || {};
         var featurePRConfig = customParams.featurePR || {};
         var featureOwner = featurePRConfig.owner || '';
         var featureRepo = featurePRConfig.repo || '';
+        var featureScm = (featureOwner && featureRepo) ? createScmCompat(config, featureOwner, featureRepo) : null;
 
         var labelsConfig = customParams.labels || {};
         var labelPassed = labelsConfig.testsPassed || 'tests_passed';
@@ -502,7 +566,7 @@ function action(params) {
 
             if (gitResult.success) {
                 var prTitle = sanitizeForShell(ticketKey + ' ' + ticketSummary);
-                var prResult = createAutomationPR(prTitle, branchName, config.git.baseBranch, workingDir);
+                var prResult = createAutomationPR(prTitle, branchName, config.git.baseBranch, workingDir, automationScm);
                 automationPrUrl = prResult.prUrl;
             } else {
                 console.warn('Git operations failed:', gitResult.error);
@@ -510,7 +574,7 @@ function action(params) {
         }
 
         // Step 4: Read structured result (fallback: workspace root → automation repo outputs)
-        var result = readResultJson(workingDir);
+        var result = readResultJson(workingDir, ticketKey);
         if (!result) {
             console.warn('No test_automation_result.json found — posting error to Jira but keeping git work');
             try {
@@ -548,21 +612,21 @@ function action(params) {
         }
 
         // Step 5: Find feature PR and update it
-        if (featureOwner && featureRepo && !blockedByHuman) {
-            var featurePR = findFeaturePR(ticketKey, featureOwner, featureRepo);
+        if (featureScm && !blockedByHuman) {
+            var featurePR = findFeaturePR(ticketKey, featureScm, featureOwner, featureRepo);
             if (featurePR) {
-                updateFeaturePRLabel(featureOwner, featureRepo, featurePR.number, passed, labelPassed, labelFailed);
+                updateFeaturePRLabelWithScm(featureScm, featurePR.number, passed, labelPassed, labelFailed);
                 // Inject automation PR URL into feature update markdown if present
                 if (automationPrUrl) {
                     try {
-                        var featureUpdateContent = readOutputFile('outputs/pr_feature_update.md', workingDir) || '';
+                        var featureUpdateContent = readOutputFile('pr_feature_update.md', workingDir, ticketKey) || '';
                         if (featureUpdateContent && featureUpdateContent.indexOf(automationPrUrl) === -1) {
                             file_write('outputs/pr_feature_update.md',
                                 featureUpdateContent + '\n> Automation PR: ' + automationPrUrl + '\n');
                         }
                     } catch (_) {}
                 }
-                updateFeaturePRBody(featureOwner, featureRepo, featurePR.number, workingDir, result);
+                updateFeaturePRBodyWithScm(featureScm, featurePR.number, workingDir, result, ticketKey);
             }
         }
 

@@ -13,6 +13,7 @@ function loadPushReworkChanges() {
             './common/pullRequest.js': {},
             './common/feedbackLoop.js': {},
             './common/autoStart.js': { triggerConfiguredWorkflowForTicket: function() { return false; } },
+            './common/outputFiles.js': { readOutputFile: function() { return null; } },
             './cacheToReleases.js': {}
         }),
         {}
@@ -56,6 +57,7 @@ function loadPushReworkChangesForAction(mocks) {
                 triggerConfiguredWorkflowForTicket: function() { mocks.autoStartReview = true; return true; },
                 triggerSmIfIdle: function() { mocks.triggerSm = true; return true; }
             },
+            './common/outputFiles.js': { readOutputFile: function() { return null; } },
             './cacheToReleases.js': { action: function() {} }
         }),
         {

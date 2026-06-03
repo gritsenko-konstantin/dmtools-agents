@@ -14,39 +14,26 @@ var configLoader = require('./configLoader.js');
 var prHelper = require('./common/pullRequest.js');
 var autoStart = require('./common/autoStart.js');
 const { GIT_CONFIG, STATUSES, LABELS } = require('./config.js');
+var outputFiles = require('./common/outputFiles.js');
 
 function cleanCommandOutput(output) {
     return prHelper.cleanCommandOutput(output);
 }
 
 function readFile(path) {
-    try {
-        const content = file_read({ path: path });
-        return (content && content.trim()) ? content : null;
-    } catch (e) {
-        console.warn('Could not read file ' + path + ':', e);
-        return null;
-    }
+    return outputFiles.readOutputFile(path, {});
 }
 
-function readOutputFile(relativePath, workingDir) {
-    var content = readFile(relativePath);
-    if (content) return content;
-
-    if (workingDir) {
-        content = readFile(workingDir + '/' + relativePath);
-        if (content) {
-            console.log('Read from fallback path:', workingDir + '/' + relativePath);
-            return content;
-        }
-    }
-
-    return null;
+function readOutputFile(relativePath, workingDir, ticketKey) {
+    return outputFiles.readOutputFile(relativePath, {
+        workingDir: workingDir,
+        ticketKey: ticketKey
+    });
 }
 
-function readResultJson(workingDir) {
+function readResultJson(workingDir, ticketKey) {
     try {
-        const raw = readOutputFile('outputs/test_automation_result.json', workingDir);
+        const raw = readOutputFile('test_automation_result.json', workingDir, ticketKey);
         if (!raw) {
             console.warn('outputs/test_automation_result.json is empty or missing');
             return null;
@@ -82,14 +69,14 @@ function markdownToJiraWiki(markdown) {
     return text.trim();
 }
 
-function readJiraComment(params, workingDir) {
-    var jiraComment = readOutputFile('outputs/jira_comment.md', workingDir);
+function readJiraComment(params, workingDir, ticketKey) {
+    var jiraComment = readOutputFile('jira_comment.md', workingDir, ticketKey);
     if (jiraComment) return jiraComment;
 
-    jiraComment = readOutputFile('outputs/comment.md', workingDir);
+    jiraComment = readOutputFile('comment.md', workingDir, ticketKey);
     if (jiraComment) return jiraComment;
 
-    return markdownToJiraWiki(params.response || readOutputFile('outputs/response.md', workingDir) || '');
+    return markdownToJiraWiki(params.response || readOutputFile('response.md', workingDir, ticketKey) || '');
 }
 
 function runInRepo(command, workingDir) {
@@ -183,13 +170,14 @@ function performGitOperations(branchName, commitMessage, workingDir, testFilesPa
     }
 }
 
-function createPullRequest(title, branchName, baseBranch, workingDir) {
+function createPullRequest(title, branchName, baseBranch, workingDir, scm) {
     console.log('Creating Pull Request...');
     return prHelper.createPullRequest({
         title: title,
         branchName: branchName,
         baseBranch: baseBranch,
         workingDir: workingDir,
+        scm: scm,
         bodyFileCandidates: ['outputs/pr_body.md', 'outputs/response.md'],
         defaultBody: 'Automated test automation changes.',
         runCommand: runInRepo,
@@ -268,14 +256,15 @@ function action(params) {
         const projectKey = ticketKey.split('-')[0];
         var config = configLoader.loadProjectConfig(params.jobParams || params);
         var customParams = (params.jobParams || params).customParams || {};
+        var scm = configLoader.createScm(config);
         var workingDir = config.workingDir || null;
         var testFilesPath = customParams.testFilesGlob || 'testing/';
-        const jiraComment = readJiraComment(params, workingDir);
+        const jiraComment = readJiraComment(params, workingDir, ticketKey);
 
         console.log('=== Processing test automation results for', ticketKey, '===');
 
         // Step 1: Read structured result
-        const result = readResultJson(workingDir);
+        const result = readResultJson(workingDir, ticketKey);
         if (!result) {
             // CLI failed (e.g. rate limit) but may have written partial code — push it
             var partialPushed = false;
@@ -362,7 +351,7 @@ function action(params) {
 
             if (gitResult.success && !gitResult.noNewCommit) {
                 const prTitle = configLoader.formatTemplate(config.formats.prTitle.testAutomation, {ticketKey: ticketKey, ticketSummary: ticketSummary});
-                const prResult = createPullRequest(prTitle, branchName, config.git.baseBranch, workingDir);
+                const prResult = createPullRequest(prTitle, branchName, config.git.baseBranch, workingDir, scm);
                 prUrl = prResult.prUrl;
                 if (!prResult.success || !prUrl) {
                     // PR creation failed — branch has code but no PR; post comment and reset to Backlog for retry

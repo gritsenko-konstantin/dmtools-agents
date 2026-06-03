@@ -13,6 +13,7 @@ const { LABELS, STATUSES, resolveStatuses } = require('./config.js');
 var scmModule = require('./common/scm.js');
 var autoStart = require('./common/autoStart.js');
 var configLoader = require('./configLoader.js');
+var outputFiles = require('./common/outputFiles.js');
 
 var RESUME_MARKER = 'outputs/.pr-review-missing-output-resume-attempted';
 
@@ -88,14 +89,21 @@ function resolveCustomParams(params, config) {
  * Read and parse outputs/pr_review.json
  * @returns {Object|null} Parsed review data or null on error
  */
-function readReviewJson() {
+function readReviewJson(ticketKey, workingDir) {
     try {
-        const raw = file_read({ path: 'outputs/pr_review.json' });
+        const review = outputFiles.readOutputFileDetailed('pr_review.json', {
+            ticketKey: ticketKey,
+            workingDir: workingDir
+        });
+        const raw = review ? review.content : null;
         if (!raw || raw.trim() === '') {
             console.warn('outputs/pr_review.json is empty');
             return null;
         }
         const parsed = JSON.parse(raw);
+        if (!parsed.__sourcePath && review && review.path) {
+            parsed.__sourcePath = review.path;
+        }
         console.log('Parsed pr_review.json:', JSON.stringify(parsed, null, 2));
         return parsed;
     } catch (error) {
@@ -109,12 +117,15 @@ function readReviewJson() {
  * @param {string} filePath - Path to markdown file
  * @returns {string} File content or empty string on error
  */
-function readMarkdownFile(filePath) {
+function readMarkdownFile(filePath, ticketKey, workingDir) {
     if (!filePath) {
         return '';
     }
     try {
-        const content = file_read({ path: filePath });
+        const content = outputFiles.readOutputFile(filePath, {
+            ticketKey: ticketKey,
+            workingDir: workingDir
+        });
         if (content && content.trim() !== '') {
             return content;
         }
@@ -273,9 +284,9 @@ function findPRForTicket(scm, ticketKey) {
     }
 }
 
-function postGeneralComment(scm, pullRequestId, commentPath) {
+function postGeneralComment(scm, pullRequestId, commentPath, ticketKey, workingDir) {
     try {
-        const comment = readMarkdownFile(commentPath);
+        const comment = readMarkdownFile(commentPath, ticketKey, workingDir);
         if (!comment) {
             console.warn('No general comment content found at', commentPath);
             return false;
@@ -346,12 +357,12 @@ function postFallbackInlineComment(scm, pullRequestId, filePath, line, commentTe
     console.log('✅ Posted fallback PR comment for ' + lineRef);
 }
 
-function postInlineComment(scm, pullRequestId, inlineComment) {
+function postInlineComment(scm, pullRequestId, inlineComment, ticketKey, workingDir) {
     // Accept both spec formats:
     //   old spec: { file, comment: "path/to/file.md" }
     //   agent output: { path, body: "inline text" }
     const filePath = inlineComment.path || inlineComment.file;
-    const commentText = inlineComment.body || readMarkdownFile(inlineComment.comment);
+    const commentText = inlineComment.body || readMarkdownFile(inlineComment.comment, ticketKey, workingDir);
 
     try {
         if (!commentText) {
@@ -475,16 +486,17 @@ function action(params) {
         const ticketKey = params.ticket.key;
         const jiraReview = params.response || '';
         var config = configLoader.loadProjectConfig(params.jobParams || params);
+        var workingDir = config.workingDir || null;
         var scm = scmModule.createScm(config);
         var labels = (params.ticket && params.ticket.fields && params.ticket.fields.labels) ? params.ticket.fields.labels : [];
 
         console.log('=== Processing PR review results for', ticketKey, '===');
 
         // Step 1: Read structured review data
-        let reviewData = readReviewJson();
+        let reviewData = readReviewJson(ticketKey, workingDir);
         if (!reviewData) {
             attemptResumeIfReviewOutputsMissing(ticketKey);
-            reviewData = readReviewJson();
+            reviewData = readReviewJson(ticketKey, workingDir);
         }
         if (!reviewData) {
             const customParams = resolveCustomParams(params, config);
@@ -590,7 +602,7 @@ function action(params) {
 
             // Post general comment
             if (reviewData.generalComment) {
-                postGeneralComment(scm, prNumber, reviewData.generalComment);
+                postGeneralComment(scm, prNumber, reviewData.generalComment, ticketKey, workingDir);
             }
 
             // Post inline comments
@@ -599,7 +611,7 @@ function action(params) {
 
                 reviewData.inlineComments.forEach(function(inlineComment, index) {
                     console.log('Processing inline comment ' + (index + 1) + '/' + reviewData.inlineComments.length);
-                    postInlineComment(scm, prNumber, inlineComment);
+                    postInlineComment(scm, prNumber, inlineComment, ticketKey, workingDir);
                 });
             }
 

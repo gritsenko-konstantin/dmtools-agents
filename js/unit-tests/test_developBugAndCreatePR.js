@@ -9,29 +9,37 @@ function loadDevelopBugAndCreatePR(mocks) {
     var removed = [];
     var commands = [];
 
+    var allMocks = Object.assign({
+        file_read: function(args) {
+            if (args.path === 'outputs/response.md') throw new Error('missing response');
+            throw new Error('missing ' + args.path);
+        },
+        cli_execute_command: function(args) {
+            commands.push(args.command);
+            if (args.command.indexOf('gh pr list --head ') === 0) return '';
+            if (args.command === 'git status --porcelain') return 'A  outputs/rca.md\n';
+            if (args.command === 'git branch --show-current') return 'main\n';
+            return '';
+        },
+        jira_post_comment: function(args) { comments.push(args); },
+        jira_move_to_status: function(args) { moves.push(args); },
+        jira_remove_label: function(args) { removed.push(args); }
+    }, mocks);
+    var outputFiles = loadModule(
+        'js/common/outputFiles.js',
+        makeRequire({}),
+        allMocks
+    );
+
     var mod = loadModule(
         'js/developBugAndCreatePR.js',
         makeRequire({
             './config.js': configModule,
             './configLoader.js': configLoaderModule,
+            './common/outputFiles.js': outputFiles,
             './developTicketAndCreatePR.js': { action: function() { return { success: true, path: 'delegated' }; } }
         }),
-        Object.assign({
-            file_read: function(args) {
-                if (args.path === 'outputs/response.md') throw new Error('missing response');
-                throw new Error('missing ' + args.path);
-            },
-            cli_execute_command: function(args) {
-                commands.push(args.command);
-                if (args.command.indexOf('gh pr list --head ') === 0) return '';
-                if (args.command === 'git status --porcelain') return 'A  outputs/rca.md\n';
-                if (args.command === 'git branch --show-current') return 'main\n';
-                return '';
-            },
-            jira_post_comment: function(args) { comments.push(args); },
-            jira_move_to_status: function(args) { moves.push(args); },
-            jira_remove_label: function(args) { removed.push(args); }
-        }, mocks)
+        allMocks
     );
 
     return {

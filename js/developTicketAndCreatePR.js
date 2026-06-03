@@ -10,6 +10,7 @@ const submoduleHelper = require('./common/submodules.js');
 const feedbackLoop = require('./common/feedbackLoop.js');
 var configLoader = require('./configLoader.js');
 var autoStart = require('./common/autoStart.js');
+var outputFiles = require('./common/outputFiles.js');
 const { GIT_CONFIG, STATUSES, LABELS, resolveStatuses } = require('./config.js');
 var cacheToReleases = require('./cacheToReleases.js');
 
@@ -22,6 +23,7 @@ function hasPrApprovedLabel(ticket) {
 // When config.workingDir is set (via customParams.targetRepository.workingDir),
 // all git/shell commands are executed inside that directory.
 var _workingDir = null;
+var _scm = null;
 function runCmd(args) {
     if (_workingDir) args.workingDirectory = _workingDir;
     return cli_execute_command(args);
@@ -395,6 +397,7 @@ function createPullRequest(title, branchName, baseBranch) {
         branchName: branchName,
         baseBranch: baseBranch,
         workingDir: _workingDir,
+        scm: _scm,
         bodyFileCandidates: ['outputs/response.md'],
         defaultBody: 'Development changes.',
         runCommand: function(command, workingDir) {
@@ -586,6 +589,7 @@ function action(params) {
         const actualParams = params.ticket ? params : (params.jobParams || params);
         var config = configLoader.loadProjectConfig(params.jobParams || params);
         _workingDir = config.workingDir || null;
+        _scm = configLoader.createScm(config);
 
         const ticketKey = actualParams.ticket.key;
         const ticketSummary = actualParams.ticket.fields.summary;
@@ -604,22 +608,18 @@ function action(params) {
         // the ticket to In Review. Move now and skip re-development.
         const expectedBranch = configLoader.resolveBranchName(config, params.ticket || actualParams.ticket, 'development');
         try {
-            const existingPrJson = runCmd({
-                command: 'gh pr list --head ' + expectedBranch + ' --state open --json url,number --jq ".[0]"'
-            }) || '';
-            const cleanedPrJson = existingPrJson.split('\n').filter(function(l) {
-                return l.trim() && l.indexOf('Script started') === -1 && l.indexOf('Script done') === -1;
-            }).join('').trim();
-            if (cleanedPrJson && cleanedPrJson !== 'null') {
-                let existingPr = null;
-                try { existingPr = JSON.parse(cleanedPrJson); } catch (e) {}
-                if (existingPr && existingPr.url) {
-                    console.log('⚠️  PR already open for', ticketKey, ':', existingPr.url, '— skipping re-development');
+            var openPrs = _scm.listPrs('open') || [];
+            var existingPr = openPrs.filter(function(pr) {
+                return pr && pr.head && pr.head.ref === expectedBranch;
+            })[0];
+            if (existingPr) {
+                    var existingUrl = existingPr.html_url || existingPr.url || '';
+                    console.log('⚠️  PR already open for', ticketKey, ':', existingUrl || ('#' + existingPr.number), '— skipping re-development');
                     try {
                         jira_post_comment({
                             key: ticketKey,
                             comment: 'h3. ℹ️ PR Already Open\n\n' +
-                                'A pull request already exists for this ticket: ' + existingPr.url + '\n\n' +
+                                'A pull/merge request already exists for this ticket: ' + (existingUrl || ('#' + existingPr.number)) + '\n\n' +
                                 'Moved ticket to *In Review* for review.'
                         });
                     } catch (e) {}
@@ -628,7 +628,6 @@ function action(params) {
                         console.log('✅ Moved', ticketKey, 'to In Review');
                     } catch (e) { console.warn('Failed to move to In Review:', e); }
                     return { success: true, path: 'pr_already_open', ticketKey };
-                }
             }
         } catch (prCheckErr) {
             console.warn('Could not check existing PRs (non-fatal):', prCheckErr);
@@ -646,25 +645,17 @@ function action(params) {
                 console.log('✅ Removed pr_approved from Jira ticket');
                 prApprovedCleaned = true;
             } catch (e) { console.warn('Could not remove pr_approved from Jira:', e); }
-            // Also try to remove from GitHub PR if branch already has one open
+            // Also try to remove from source-control PR/MR if branch already has one open
             try {
-                var targetRepo = _customParams && _customParams.targetRepository;
-                if (targetRepo && targetRepo.owner && targetRepo.repo) {
-                    var prListJson = runCmd({
-                        command: 'gh pr list --head ' + expectedBranch + ' --state open --json number --jq ".[0].number"'
-                    }) || '';
-                    var prNum = parseInt(cleanCommandOutput(prListJson), 10);
-                    if (prNum) {
-                        github_remove_pr_label({
-                            workspace: targetRepo.owner,
-                            repository: targetRepo.repo,
-                            pullRequestId: String(prNum),
-                            label: LABELS.PR_APPROVED
-                        });
-                        console.log('✅ Removed pr_approved from GitHub PR #' + prNum);
-                    }
+                var openPrsForCleanup = _scm.listPrs('open') || [];
+                var prForCleanup = openPrsForCleanup.filter(function(pr) {
+                    return pr && pr.head && pr.head.ref === expectedBranch;
+                })[0];
+                if (prForCleanup && prForCleanup.number) {
+                    _scm.removeLabel(prForCleanup.number, LABELS.PR_APPROVED);
+                    console.log('✅ Removed pr_approved from source-control PR/MR #' + prForCleanup.number);
                 }
-            } catch (e) { console.warn('Could not remove pr_approved from GitHub PR (non-fatal):', e); }
+            } catch (e) { console.warn('Could not remove pr_approved from source-control PR/MR (non-fatal):', e); }
         }
 
         // Configure git author
@@ -757,7 +748,10 @@ function action(params) {
                 //       → Reset to Ready For Development for automatic retry.
                 var agentResponse = null;
                 try {
-                    agentResponse = file_read({ path: 'outputs/response.md' });
+                    agentResponse = outputFiles.readOutputFile('response.md', {
+                        ticketKey: ticketKey,
+                        workingDir: _workingDir
+                    });
                 } catch (e) {
                     agentResponse = null;
                 }
@@ -833,7 +827,10 @@ function action(params) {
         // Verify outputs/response.md exists (must be created by cursor-agent or workflow)
         let responseContent;
         try {
-            responseContent = file_read({ path: 'outputs/response.md' });
+            responseContent = outputFiles.readOutputFile('response.md', {
+                ticketKey: ticketKey,
+                workingDir: _workingDir
+            });
         } catch (e) {
             responseContent = null;
         }
@@ -950,6 +947,7 @@ function action(params) {
                         config: config,
                         configFile: reviewConfigFile,
                         label: 'pr_review',
+                        scm: _scm,
                         stripKeys: [
                             'removeLabel',
                             'autoStartReview',

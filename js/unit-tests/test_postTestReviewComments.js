@@ -24,6 +24,11 @@ function loadPostTestReviewComments(mocks, moduleMocks) {
         cli_execute_command: function() { return ''; }
     };
     var allMocks = Object.assign({}, defaults, mocks || {});
+    var outputFiles = loadModule(
+        'js/common/outputFiles.js',
+        makeRequire({}),
+        allMocks
+    );
     var gh = loadModule(
         'js/common/githubHelpers.js',
         makeRequire({
@@ -47,7 +52,8 @@ function loadPostTestReviewComments(mocks, moduleMocks) {
             './config.js': configModule,
             './common/githubHelpers.js': gh,
             './common/autoStart.js': autoStartMock,
-            './configLoader.js': configLoaderModule
+            './configLoader.js': configLoaderModule,
+            './common/outputFiles.js': outputFiles
         }),
         allMocks
     );
