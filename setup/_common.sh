@@ -16,6 +16,7 @@ detect_ci() {
   if   [ -n "${BITRISE_BUILD_NUMBER:-}" ]; then echo "bitrise"
   elif [ -n "${GITHUB_ACTIONS:-}" ];       then echo "github"
   elif [ -n "${BUILD_BUILDID:-}" ];        then echo "ado"
+  elif [ -n "${GITLAB_CI:-}" ];            then echo "gitlab"
   else                                          echo "local"
   fi
 }
@@ -48,6 +49,9 @@ register_path() {
     github)
       [ -n "${GITHUB_PATH:-}" ] && echo "${dir}" >> "${GITHUB_PATH}" || true
       ;;
+    gitlab)
+      [ -n "${GITLAB_ENV_PATH:-}" ] && echo "export PATH=\"${dir}:\$PATH\"" >> "${GITLAB_ENV_PATH}" || true
+      ;;
     ado)
       echo "##vso[task.prependpath]${dir}"
       ;;
@@ -69,6 +73,9 @@ export_var() {
     github)
       [ -n "${GITHUB_ENV:-}" ] && echo "${key}=${value}" >> "${GITHUB_ENV}" || true
       ;;
+    gitlab)
+      [ -n "${GITLAB_ENV_PATH:-}" ] && echo "export ${key}=\"${value}\"" >> "${GITLAB_ENV_PATH}" || true
+      ;;
     ado)
       echo "##vso[task.setvariable variable=${key}]${value}"
       ;;
@@ -79,6 +86,16 @@ export_var() {
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 is_installed() { command -v "$1" &>/dev/null; }
+
+# Returns "sudo" when not running as root, empty string when already root.
+# Usage: $(sudo_cmd) apt-get install ...
+sudo_cmd() {
+  if [ "$(id -u)" -ne 0 ]; then
+    echo "sudo"
+  else
+    echo ""
+  fi
+}
 
 section() { echo ""; echo "▶ $*"; echo ""; }
 

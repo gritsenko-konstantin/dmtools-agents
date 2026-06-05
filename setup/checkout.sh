@@ -112,7 +112,7 @@ if ! is_installed jq; then
   echo "📥 Installing jq..."
   case "$(detect_os)" in
     macos) brew install jq ;;
-    linux) sudo apt-get install -y jq -qq ;;
+    linux) $(sudo_cmd) apt-get install -y jq -qq ;;
     *)     echo "❌ Cannot install jq on this OS" >&2; exit 1 ;;
   esac
 fi

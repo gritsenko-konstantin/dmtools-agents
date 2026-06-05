@@ -51,15 +51,16 @@ if [ "${OS}" = "macos" ]; then
   JAVA_HOME_RESOLVED="$(/usr/libexec/java_home -v "${JAVA_MIN_VERSION}" 2>/dev/null || true)"
 
 elif [ "${OS}" = "linux" ]; then
-  if ! sudo apt-get install -y "openjdk-${JAVA_MIN_VERSION}-jdk" -qq 2>/dev/null; then
+  SUDO="$(sudo_cmd)"
+  if ! ${SUDO} apt-get install -y "openjdk-${JAVA_MIN_VERSION}-jdk" -qq 2>/dev/null; then
     echo "apt fallback: adding Adoptium Temurin repo..."
-    sudo apt-get install -y wget apt-transport-https gnupg -qq
+    ${SUDO} apt-get install -y wget apt-transport-https gnupg -qq
     wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public \
-      | sudo tee /etc/apt/trusted.gpg.d/adoptium.asc >/dev/null
+      | ${SUDO} tee /etc/apt/trusted.gpg.d/adoptium.asc >/dev/null
     echo "deb https://packages.adoptium.net/artifactory/deb $(lsb_release -cs) main" \
-      | sudo tee /etc/apt/sources.list.d/adoptium.list
-    sudo apt-get update -qq
-    sudo apt-get install -y "temurin-${JAVA_MIN_VERSION}-jdk" -qq
+      | ${SUDO} tee /etc/apt/sources.list.d/adoptium.list
+    ${SUDO} apt-get update -qq
+    ${SUDO} apt-get install -y "temurin-${JAVA_MIN_VERSION}-jdk" -qq
   fi
   JAVA_HOME_RESOLVED="$(dirname "$(dirname "$(readlink -f "$(which java)" 2>/dev/null || true)")" 2>/dev/null || true)"
 
