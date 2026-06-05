@@ -95,9 +95,18 @@ function buildEncodedConfig(ticketKey, rule, effectiveConfig) {
             var agentParamsRoot = agentJson.params || {};
             Object.keys(agentParamsRoot).forEach(function(paramKey) {
                 var value = agentParamsRoot[paramKey];
-                if (typeof value === 'string' &&
-                    (value.indexOf('{jiraProject}') !== -1 || value.indexOf('{parentTicket}') !== -1)) {
-                    p[paramKey] = configLoader.interpolateJql(value, effectiveConfig);
+                if (typeof value === 'string') {
+                    // Always copy string params; interpolate JQL placeholders when present
+                    if (value.indexOf('{jiraProject}') !== -1 || value.indexOf('{parentTicket}') !== -1) {
+                        p[paramKey] = configLoader.interpolateJql(value, effectiveConfig);
+                    } else {
+                        p[paramKey] = value;
+                    }
+                } else if (typeof value === 'boolean' || typeof value === 'number') {
+                    p[paramKey] = value;
+                } else if (Array.isArray(value)) {
+                    // Copy arrays (e.g. cliPrompts, cliCommands) so encoded_config carries the full original list
+                    p[paramKey] = value.slice();
                 }
             });
             var agentParams = (agentJson.params || {}).agentParams;
