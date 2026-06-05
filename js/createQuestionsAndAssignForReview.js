@@ -82,9 +82,10 @@ function readDescriptionFile(filePath, fallbackSummary) {
  * @param {string} parentKey - Parent story ticket key
  * @param {string} projectKey - Jira project key
  * @param {Object} jiraConfig - Resolved jira config (issueTypes, labels, questions)
+ * @param {Object} [priorityMap] - Optional mapping of agent priority names to project-specific names
  * @returns {string|null} Created ticket key or null on failure
  */
-function createQuestion(entry, parentKey, projectKey, jiraConfig) {
+function createQuestion(entry, parentKey, projectKey, jiraConfig, priorityMap) {
     var summary = ensureQPrefix(buildSummary(entry.summary, 0));
     var description = readDescriptionFile(entry.description, entry.summary);
     var questionIssueType = jiraConfig.issueTypes.SUBTASK;
@@ -100,7 +101,8 @@ function createQuestion(entry, parentKey, projectKey, jiraConfig) {
     };
 
     if (entry.priority) {
-        fieldsJson.priority = { name: entry.priority };
+        var resolvedPriority = (priorityMap && priorityMap[entry.priority]) || entry.priority;
+        fieldsJson.priority = { name: resolvedPriority };
     }
 
     if (entry.answer) {
@@ -134,8 +136,10 @@ function action(params) {
         var jiraConfig = projectConfig.jira;
         var labels = projectConfig.labels;
         var customParams = (params.jobParams && params.jobParams.customParams) || params.customParams || {};
+        var priorityMap = customParams.priorityMap || null;
 
         console.log('Processing question creation for:', ticketKey);
+        if (priorityMap) console.log('Priority map active:', JSON.stringify(priorityMap));
 
         // 1. Read questions.json
         var questions = readQuestionsJson();
@@ -148,7 +152,7 @@ function action(params) {
         // 2. Create question subtasks
         var createdTickets = [];
         questions.forEach(function(entry) {
-            var key = createQuestion(entry, ticketKey, projectKey, Object.assign({}, jiraConfig, { labels: labels }));
+            var key = createQuestion(entry, ticketKey, projectKey, Object.assign({}, jiraConfig, { labels: labels }), priorityMap);
             createdTickets.push({
                 summary: ensureQPrefix(entry.summary || ''),
                 priority: entry.priority,
