@@ -1,11 +1,12 @@
 ```mermaid
 flowchart TD
-    subgraph INPUT["Read input/ folder"]
-        I1["request.md — full ticket details, requirements, agent instructions"]
-        I2["comments.md — ticket history, context, prior decisions"]
-        I3["List ALL files: ls -la input/ && ls -la input/TICKET-*/"]
-        I4["Text files: cat"]
-        I5["Images (.png, .jpg, .jpeg, .gif, .webp): view with Read tool — describe designs/UI"]
+    subgraph INPUT["Read input/ folder — MANDATORY first step"]
+        I1["List ALL files: find input/ -type f | sort (NO maxdepth limit!)"]
+        I2["Read request.md — full ticket details"]
+        I3["Read comments.md — history, prior decisions"]
+        I4["Read existing_questions.json — avoid duplicates"]
+        I5["Read ALL .md files in input/TICKET/confluence/ — already downloaded, no API needed!"]
+        I1 --> I2 --> I3 --> I4 --> I5
     end
 
     subgraph RULES["Rules"]
