@@ -44,7 +44,8 @@
             "sm_story_questions_triggered",
             "ai_questions_asked"
           ],
-          "addLabel": "sm_story_questions_triggered"
+          "addLabel": "sm_story_questions_triggered",
+          "limit": 1
         },
         {
           "description": "Backlog / To Do Tasks (children of parent ticket) → run intake agent",
