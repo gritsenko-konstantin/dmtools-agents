@@ -1,13 +1,12 @@
 ```mermaid
 flowchart TD
-    subgraph INPUT_ORDER["⚠️ MANDATORY: Read input files in this exact order FIRST"]
+    subgraph INPUT_ORDER["⚠️ MANDATORY: Read input files FIRST before anything else"]
         I1["1️⃣ find input/ -type f | sort — list all available files"]
         I2["2️⃣ Read input/TICKET/request.md — ticket description"]
         I3["3️⃣ Read input/TICKET/comments.md — existing discussion"]
         I4["4️⃣ Read input/TICKET/existing_questions.json — avoid duplicates"]
         I5["5️⃣ Read ALL files in input/TICKET/confluence/ — specs already downloaded!"]
-        I6["6️⃣ ONLY after reading ALL input → run codegraph"]
-        I1 --> I2 --> I3 --> I4 --> I5 --> I6
+        I1 --> I2 --> I3 --> I4 --> I5
     end
 
     subgraph CONFLUENCE_RULE["Confluence pages in input/ — READ THEM, don't re-fetch"]
