@@ -1,15 +1,13 @@
 # Jira Question Description Format
 
-When writing question descriptions for Jira tracker, replace the meta tags from the generic template with Jira Markdown equivalents:
+When writing question descriptions for Jira tracker, render the generic formatting tags as Jira Markdown:
 
-| Meta tag | Jira Markdown |
-|----------|---------------|
-| `{{background}}` | `*Background:*` |
-| `{{question}}` | `*Question:*` |
-| `{{options}}` | `*Options:*` |
-| `{{recommended_decision}}` | `*Recommended Decision:*` |
+| Generic tag | Jira Markdown |
+|-------------|---------------|
+| `<bold>X</bold>` | `*X*` |
+| `<bullet>` | `-` |
 
-Formatting rules:
+Additional formatting rules:
 - `*bold*` — single asterisks for bold text
 - `- item` — dashes for bullet lists
 - Do NOT use `**` double asterisks
@@ -18,8 +16,8 @@ Formatting rules:
 ```mermaid
 flowchart TD
     subgraph SYNTAX["Jira Markdown Syntax"]
-        S1["*bold* — single asterisks for bold text"]
-        S2["- item — dashes for bullet lists"]
+        S1["<bold>X</bold> → *X*"]
+        S2["<bullet> → - item"]
         S3["Do NOT use ** double asterisks"]
         S4["Do NOT use # Markdown headers"]
     end
