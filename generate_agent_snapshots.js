@@ -20,11 +20,17 @@ const SNAPSHOTS_DIR = path.join(REPO_ROOT, 'snapshots');
 function resolvePromptEntry(entry) {
     const trimmed = entry.trim();
     if (trimmed.endsWith('.md')) {
-        const filePath = path.join(REPO_ROOT, trimmed);
+        // JSON references may use ./agents/... prefix, but in dmtools-agents
+        // the files live directly under instructions/, prompts/, etc.
+        const normalized = trimmed
+            .replace(/^\.\/agents\//, '')
+            .replace(/^\/agents\//, '')
+            .replace(/^agents\//, '');
+        const filePath = path.join(REPO_ROOT, normalized);
         if (fs.existsSync(filePath)) {
             return fs.readFileSync(filePath, 'utf-8');
         }
-        return `<!-- MISSING FILE: ${trimmed} -->\n`;
+        return `<!-- MISSING FILE: ${trimmed} (tried ${normalized}) -->\n`;
     }
     return trimmed;
 }
