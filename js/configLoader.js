@@ -543,7 +543,15 @@ function resolveInstructions(agentName, defaultInstructions, config) {
         trackerType = 'jira';
     }
     if (config.cliPromptsByTracker && config.cliPromptsByTracker[trackerType]) {
-        var trackerSpecificForAgent = config.cliPromptsByTracker[trackerType][agentName];
+        var trackerSpecific = config.cliPromptsByTracker[trackerType];
+        var trackerSpecificForAgent = null;
+        if (Array.isArray(trackerSpecific)) {
+            // Flat structure: tracker -> array of prompts (used in agent JSON files)
+            trackerSpecificForAgent = trackerSpecific;
+        } else if (trackerSpecific && typeof trackerSpecific === 'object') {
+            // Nested structure: tracker -> agentName -> array of prompts (legacy / unit tests)
+            trackerSpecificForAgent = trackerSpecific[agentName];
+        }
         if (trackerSpecificForAgent && trackerSpecificForAgent.length > 0) {
             cliPrompts = cliPrompts.concat(trackerSpecificForAgent);
         }
