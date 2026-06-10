@@ -12,6 +12,7 @@ Providers:
   cursor   - Uses cursor-agent (default)
   codemie  - Uses codemie-claude
   copilot  - Uses GitHub Copilot CLI (npx @github/copilot)
+  kimi     - Uses Kimi Code CLI (kimi)
 
 Example:
   $(basename "$0") "process the input folder"
@@ -23,6 +24,7 @@ Notes:
   - For codemie: requires CODEMIE_API_KEY and CODEMIE_BASE_URL environment variables
   - For copilot: requires COPILOT_GITHUB_TOKEN or GITHUB_TOKEN environment variable
   - For cursor: optional CURSOR_MODEL env var (default: auto)
+  - For kimi: requires KIMI_API_KEY environment variable; optional KIMI_BASE_URL and KIMI_MODEL
   - Final response is written to outputs/response.md
 EOF
 }
@@ -347,6 +349,83 @@ elif [ "$PROVIDER" = "copilot" ]; then
     rm -f "$copilot_log"
     break
   done
+
+  echo ""
+  echo "=== Agent completed with exit code: $exit_code ==="
+  exit $exit_code
+
+elif [ "$PROVIDER" = "kimi" ]; then
+  if [ -z "${KIMI_API_KEY:-}" ]; then
+    echo "Error: KIMI_API_KEY environment variable is required for kimi provider" >&2
+    echo "Set it in dmtools.env or as an environment variable" >&2
+    exit 1
+  fi
+
+  if ! command -v kimi >/dev/null 2>&1; then
+    echo "Error: kimi not found in PATH" >&2
+    echo "Install Kimi Code CLI: https://code.kimi.com/kimi-code/install.sh" >&2
+    exit 127
+  fi
+
+  echo "Kimi Configuration:"
+  if [ -n "${KIMI_BASE_URL:-}" ]; then
+    echo "  Base URL: ${KIMI_BASE_URL}"
+  fi
+  if [ -n "${KIMI_MODEL:-}" ]; then
+    echo "  Model: ${KIMI_MODEL}"
+  fi
+  echo "Working directory: $(pwd)"
+  echo ""
+
+  # Build kimi command.
+  # --print runs in non-interactive mode (auto-approves tools, dismisses questions).
+  # PASS_ARGS support: flags like --continue --resume --session are forwarded.
+  # By default we do NOT pass --model unless KIMI_MODEL is explicitly set.
+  KIMI_MODEL_ARGS=()
+  if [ -n "${KIMI_MODEL:-}" ]; then
+    KIMI_MODEL_ARGS=(--model "${KIMI_MODEL}")
+  fi
+
+  # For large prompts, stdin is safer than -p to avoid ARG_MAX limits.
+  # When PASS_ARGS contains session-related flags, use -p explicitly because
+  # kimi may not read stdin when resuming a session.
+  kimi_should_use_prompt_flag() {
+    for pass_arg in "${PASS_ARGS[@]:-}"; do
+      case "${pass_arg}" in
+        --continue|--resume|--resume=*|--session|--session=*)
+          return 0
+          ;;
+      esac
+    done
+    return 1
+  }
+
+  kimi_log="$(mktemp)"
+  if kimi_should_use_prompt_flag; then
+    echo "Running: kimi --print --yolo ${KIMI_MODEL_ARGS[*]:-} ${PASS_ARGS[*]:-} -p <prompt:${PROMPT_BYTES} bytes>"
+    echo ""
+    set +e
+    kimi --print --yolo ${KIMI_MODEL_ARGS[@]+"${KIMI_MODEL_ARGS[@]}"} ${PASS_ARGS[@]+"${PASS_ARGS[@]}"} -p "${PROMPT}" 2>&1 | tee "$kimi_log"
+    exit_code=${PIPESTATUS[0]}
+    set -e
+  elif [ -f "${PROMPT_ARG}" ]; then
+    echo "Running: kimi --print --yolo ${KIMI_MODEL_ARGS[*]:-} ${PASS_ARGS[*]:-} (prompt: ${PROMPT_BYTES} bytes via stdin)"
+    echo ""
+    set +e
+    kimi --print --yolo ${KIMI_MODEL_ARGS[@]+"${KIMI_MODEL_ARGS[@]}"} ${PASS_ARGS[@]+"${PASS_ARGS[@]}"} < "${PROMPT_ARG}" 2>&1 | tee "$kimi_log"
+    exit_code=${PIPESTATUS[0]}
+    set -e
+  else
+    echo "Running: kimi --print --yolo ${KIMI_MODEL_ARGS[*]:-} ${PASS_ARGS[*]:-} -p <inline prompt>"
+    echo ""
+    set +e
+    kimi --print --yolo ${KIMI_MODEL_ARGS[@]+"${KIMI_MODEL_ARGS[@]}"} ${PASS_ARGS[@]+"${PASS_ARGS[@]}"} -p "${PROMPT}" 2>&1 | tee "$kimi_log"
+    exit_code=${PIPESTATUS[0]}
+    set -e
+  fi
+
+  record_codegraph_usage "$kimi_log"
+  rm -f "$kimi_log"
 
   echo ""
   echo "=== Agent completed with exit code: $exit_code ==="
