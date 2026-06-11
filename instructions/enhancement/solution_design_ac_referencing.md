@@ -18,6 +18,8 @@ Read parent context files in the input folder if present:
 
 **Example AC Coverage section**
 
+The example below uses generic XML-style tags (`<bold>`, `<bullet>`) only to illustrate structure. In the final `outputs/response.md`, replace them with the tracker-specific markup from the transformation table.
+
 <bold>AC Coverage:</bold>
 All Acceptance Criteria are defined in the source ticket that carries the Acceptance Criteria field (see parent context). Below is how each AC maps to the solution:
 <bullet> AC1 (Feature Display) → Addressed by relevant UI component

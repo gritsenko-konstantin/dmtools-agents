@@ -24,7 +24,10 @@ function loadBaCheck(mocks) {
 
     return loadModule(
         'js/checkSubtasksDoneForBA.js',
-        makeRequire({ './configLoader.js': configLoaderMock }),
+        makeRequire({
+            './configLoader.js': configLoaderMock,
+            './common/tokenUsageComment.js': { postTokenUsageComments: function() {} }
+        }),
         mocks
     );
 }
