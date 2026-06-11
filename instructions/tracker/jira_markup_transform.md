@@ -32,6 +32,13 @@ When the target tracker is Jira, replace every generic placeholder tag from the 
 - For Mermaid diagrams in Jira fields that support them, wrap the diagram in `{code:mermaid}...{code}`.
 - For plain preformatted blocks, use `{noformat}...{noformat}`.
 
+## ⚠️ Common Markdown mistakes — NEVER do this in Jira output
+
+- **NEVER use `**text**` for bold.** In Jira `**text**` is rendered as plain text with asterisks, not bold. Use `*text*` for bold.
+- **NEVER use `*text*` for italic.** In Jira `*text*` means bold. Use `_text_` for italic.
+- **NEVER use `## Heading`.** Use `h2. Heading`.
+- **NEVER use triple backticks for code blocks.** Use `{code}...{code}` or `{code:lang}...{code}`.
+
 ## Full Jira wiki markup reference (Atlassian)
 
 - `*text*` — bold
