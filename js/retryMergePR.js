@@ -14,6 +14,7 @@ const { STATUSES, LABELS } = require('./config.js');
 var scmModule = require('./common/scm.js');
 var configLoader = require('./configLoader.js');
 var autoStart = require('./common/autoStart.js');
+var tokenUsageComment = require('./common/tokenUsageComment.js');
 
 function getGitHubRepoInfo() {
     try {
@@ -263,6 +264,15 @@ function action(params) {
         jira_move_to_status({ key: ticketKey, statusName: STATUSES.IN_REWORK });
         console.log('✅ Ticket moved to In Rework (' + reason + ')');
         triggerAutoStartRework(ticketKey, customParams, config, scm);
+
+        // Post token usage summary comments (e.g. [story_acceptance_criteria]: {...}) if any provider
+        // wrote outputs/*_usage.json during the agent run.
+        try {
+            tokenUsageComment.postTokenUsageComments(ticketKey);
+        } catch (e) {
+            console.warn('Failed to post token usage comments:', e);
+        }
+
         return true;
     }
 }

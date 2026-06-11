@@ -111,6 +111,16 @@ fi
 PROVIDER="${AI_AGENT_PROVIDER:-cursor}"
 echo "AI Agent Provider: $PROVIDER"
 
+# Derive a human-readable usage name for token-report files.
+# Prefer the agent config name (e.g. story_acceptance_criteria from CONFIG_FILE),
+# fall back to the provider name for standalone/local runs.
+AI_AGENT_USAGE_NAME="${PROVIDER}"
+if [ -n "${CONFIG_FILE:-}" ]; then
+  AI_AGENT_USAGE_NAME="$(basename "${CONFIG_FILE}" .json)"
+fi
+export AI_AGENT_USAGE_NAME
+echo "AI Agent Usage Name: ${AI_AGENT_USAGE_NAME}"
+
 exit_code=0
 case "$PROVIDER" in
   codemie)

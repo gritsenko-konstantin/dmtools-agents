@@ -8,6 +8,7 @@
  */
 
 const { STATUSES } = require('./config.js');
+const tokenUsageComment = require('./common/tokenUsageComment.js');
 
 function removeLabel(ticketKey, label) {
     if (!ticketKey || !label) return;
@@ -53,6 +54,14 @@ function action(params) {
             'This failed test case already has linked non-Done Bug issue(s), so it was moved to *' +
             STATUSES.BUG_TO_FIX + '* instead of staying in *Failed* and re-running bug creation.'
     });
+
+    // Post token usage summary comments (e.g. [story_acceptance_criteria]: {...}) if any provider
+    // wrote outputs/*_usage.json during the agent run.
+    try {
+        tokenUsageComment.postTokenUsageComments(ticketKey);
+    } catch (e) {
+        console.warn('Failed to post token usage comments:', e);
+    }
 
     return {
         success: true,

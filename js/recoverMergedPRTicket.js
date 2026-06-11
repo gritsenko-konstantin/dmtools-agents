@@ -6,6 +6,7 @@
 const { STATUSES, LABELS } = require('./config.js');
 var scmModule = require('./common/scm.js');
 var configLoader = require('./configLoader.js');
+var tokenUsageComment = require('./common/tokenUsageComment.js');
 
 function prMatchesTicket(pr, ticketKey) {
     if (!pr || !ticketKey) return false;
@@ -99,6 +100,14 @@ function action(params) {
                 '. Ticket moved to *' + STATUSES.MERGED + '* so the normal post-merge pipeline can continue.'
         });
     } catch (e) {}
+
+    // Post token usage summary comments (e.g. [story_acceptance_criteria]: {...}) if any provider
+    // wrote outputs/*_usage.json during the agent run.
+    try {
+        tokenUsageComment.postTokenUsageComments(ticketKey);
+    } catch (e) {
+        console.warn('Failed to post token usage comments:', e);
+    }
 
     return { success: true, action: 'moved_to_merged', prNumber: prNumber };
 }

@@ -26,6 +26,7 @@
 
 const { STATUSES, LABELS } = require('./config.js');
 var feedbackLoop = require('./common/feedbackLoop.js');
+var tokenUsageComment = require('./common/tokenUsageComment.js');
 
 function readFile(path) {
     try {
@@ -416,6 +417,14 @@ function action(params) {
         console.log('  Skipped:', results.skipped.length);
         console.log('  Released:', results.released.length, 'without outcome');
         console.log('  Errors:', results.errors.length);
+
+        // Post token usage summary comments (e.g. [story_acceptance_criteria]: {...}) if any provider
+        // wrote outputs/*_usage.json during the agent run.
+        try {
+            tokenUsageComment.postTokenUsageComments((actualParams.ticket && actualParams.ticket.key) || null);
+        } catch (e) {
+            console.warn('Failed to post token usage comments:', e);
+        }
 
         return { success: true, results: results };
 

@@ -103,13 +103,16 @@ print_kimi_usage_summary_and_write_json() {
     head -n 10 "${wire_file}" | sed 's/^/    /'
   fi
 
+  local usage_name
+  usage_name="${AI_AGENT_USAGE_NAME:-kimi}"
   mkdir -p outputs
-  python3 - "$wire_file" << 'PYEOF'
+  python3 - "$wire_file" "$usage_name" << 'PYEOF'
 import json
 import os
 import sys
 
 wire_file = sys.argv[1]
+usage_name = sys.argv[2]
 
 total_input_other = 0
 total_output = 0
@@ -151,7 +154,7 @@ summary = {
     "total_tokens": total
 }
 
-out_path = os.path.join('outputs', 'kimi_usage.json')
+out_path = os.path.join('outputs', usage_name + '_usage.json')
 with open(out_path, 'w', encoding='utf-8') as f:
     json.dump(summary, f, indent=2)
 

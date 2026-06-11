@@ -9,6 +9,7 @@
  */
 
 const { STATUSES } = require('./config.js');
+const tokenUsageComment = require('./common/tokenUsageComment.js');
 
 const TERMINAL_STATUSES = [
     STATUSES.DONE,
@@ -124,6 +125,15 @@ function action(params) {
     }
 
     console.log('✅ Moved', ticketKey, 'to Backlog');
+
+    // Post token usage summary comments (e.g. [story_acceptance_criteria]: {...}) if any provider
+    // wrote outputs/*_usage.json during the agent run.
+    try {
+        tokenUsageComment.postTokenUsageComments(ticketKey);
+    } catch (e) {
+        console.warn('Failed to post token usage comments:', e);
+    }
+
     return { success: true, action: 'moved_to_backlog', blockersResolved: blockers.length, ticketKey };
 }
 

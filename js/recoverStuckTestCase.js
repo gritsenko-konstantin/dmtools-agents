@@ -20,6 +20,7 @@
 var scmModule = require('./common/scm.js');
 var configLoader = require('./configLoader.js');
 const { STATUSES, LABELS } = require('./config.js');
+var tokenUsageComment = require('./common/tokenUsageComment.js');
 
 function findPRForTicket(scm, ticketKey) {
     try {
@@ -113,6 +114,15 @@ function action(params) {
         key: ticketKey,
         comment: '🔄 *Recovery*: Test Case was stuck in "In Development" with clean PR #' + pr.number + '. Moved to In Review - Passed for code review.'
     });
+
+    // Post token usage summary comments (e.g. [story_acceptance_criteria]: {...}) if any provider
+    // wrote outputs/*_usage.json during the agent run.
+    try {
+        tokenUsageComment.postTokenUsageComments(ticketKey);
+    } catch (e) {
+        console.warn('Failed to post token usage comments:', e);
+    }
+
     return { success: true, action: 'moved_to_review', ticketKey: ticketKey, prNumber: pr.number };
 }
 

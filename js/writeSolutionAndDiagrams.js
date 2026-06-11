@@ -19,6 +19,7 @@ const configLoader = require('./configLoader.js');
 const scmModule = require('./common/scm.js');
 const autoStart = require('./common/autoStart.js');
 const outputFiles = require('./common/outputFiles.js');
+const tokenUsageComment = require('./common/tokenUsageComment.js');
 
 function action(params) {
     try {
@@ -165,6 +166,14 @@ function action(params) {
         }
         if (!devStarted) {
             autoStart.triggerSmIfIdle({ config: projectConfig, customParams: customParams });
+        }
+
+        // Post token usage summary comments (e.g. [story_acceptance_criteria]: {...}) if any provider
+        // wrote outputs/*_usage.json during the agent run.
+        try {
+            tokenUsageComment.postTokenUsageComments(ticketKey);
+        } catch (e) {
+            console.warn('Failed to post token usage comments:', e);
         }
 
         return { success: true, message: ticketKey + ' solution written, moved to Ready For Development' };

@@ -11,6 +11,7 @@
 
 const { loadProjectConfig } = require('./configLoader.js');
 const { aiChat } = require('./common/aiChat.js');
+const tokenUsageComment = require('./common/tokenUsageComment.js');
 
 /**
  * Find the bug fix development comment from Jira comments.
@@ -125,6 +126,14 @@ function action(params) {
                 jira_remove_label({ key: ticketKey, label: removeLabel });
                 console.log('✅ Removed SM label:', removeLabel);
             } catch (e) {}
+        }
+
+        // Post token usage summary comments (e.g. [story_acceptance_criteria]: {...}) if any provider
+        // wrote outputs/*_usage.json during the agent run.
+        try {
+            tokenUsageComment.postTokenUsageComments(ticketKey);
+        } catch (e) {
+            console.warn('Failed to post token usage comments:', e);
         }
 
         return { success: true, ticketKey };

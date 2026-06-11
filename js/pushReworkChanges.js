@@ -16,6 +16,7 @@ var autoStart = require('./common/autoStart.js');
 var outputFiles = require('./common/outputFiles.js');
 const { GIT_CONFIG, STATUSES, LABELS, resolveStatuses } = require('./config.js');
 var cacheToReleases = require('./cacheToReleases.js');
+var tokenUsageComment = require('./common/tokenUsageComment.js');
 
 /**
  * Returns true if the Jira ticket has the pr_approved label.
@@ -573,6 +574,14 @@ function action(params) {
         try { cacheToReleases.action(params); } catch (e) { console.warn('⚠️ cacheToReleases failed (non-fatal):', e); }
 
         console.log('✅ Rework workflow completed successfully');
+
+        // Post token usage summary comments (e.g. [story_acceptance_criteria]: {...}) if any provider
+        // wrote outputs/*_usage.json during the agent run.
+        try {
+            tokenUsageComment.postTokenUsageComments(ticketKey);
+        } catch (e) {
+            console.warn('Failed to post token usage comments:', e);
+        }
 
         return {
             success: true,

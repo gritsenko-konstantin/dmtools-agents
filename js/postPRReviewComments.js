@@ -14,6 +14,7 @@ var scmModule = require('./common/scm.js');
 var autoStart = require('./common/autoStart.js');
 var configLoader = require('./configLoader.js');
 var outputFiles = require('./common/outputFiles.js');
+const tokenUsageComment = require('./common/tokenUsageComment.js');
 
 var RESUME_MARKER = 'outputs/.pr-review-missing-output-resume-attempted';
 
@@ -822,6 +823,14 @@ function action(params) {
         }
 
         console.log('✅ PR review workflow completed:', isApproved ? 'APPROVED' : 'CHANGES REQUESTED');
+
+        // Post token usage summary comments (e.g. [story_acceptance_criteria]: {...}) if any provider
+        // wrote outputs/*_usage.json during the agent run.
+        try {
+            tokenUsageComment.postTokenUsageComments(ticketKey);
+        } catch (e) {
+            console.warn('Failed to post token usage comments:', e);
+        }
 
         return {
             success: true,

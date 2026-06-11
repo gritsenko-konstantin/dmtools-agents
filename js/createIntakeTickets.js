@@ -7,6 +7,7 @@
 const { extractTicketKey } = require('./common/jiraHelpers.js');
 const { buildSummary } = require('./common/aiResponseParser.js');
 const { ISSUE_TYPES, LABELS, STATUSES } = require('./config.js');
+const tokenUsageComment = require('./common/tokenUsageComment.js');
 
 /**
  * Read and parse outputs/stories.json
@@ -533,6 +534,14 @@ function action(params) {
         }
 
         var successCount = results.filter(function(r) { return r.success; }).length;
+
+        // Post token usage summary comments (e.g. [story_acceptance_criteria]: {...}) if any provider
+        // wrote outputs/*_usage.json during the agent run.
+        try {
+            tokenUsageComment.postTokenUsageComments(ticketKey);
+        } catch (e) {
+            console.warn('Failed to post token usage comments:', e);
+        }
 
         return {
             success: true,

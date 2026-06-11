@@ -37,7 +37,10 @@ function readJsonSafe(filePath) {
 
 function formatUsageComment(filePath, data) {
     var baseName = path.basename(filePath, '.json');
-    return '[' + baseName + ']: ' + JSON.stringify(data);
+    // Strip the _usage suffix so the comment label matches the agent name
+    // (e.g. outputs/story_acceptance_criteria_usage.json -> [story_acceptance_criteria]: {...})
+    var label = baseName.replace(/_usage$/, '');
+    return '[' + label + ']: ' + JSON.stringify(data);
 }
 
 /**

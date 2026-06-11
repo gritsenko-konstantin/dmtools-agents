@@ -8,6 +8,7 @@
 const { assignForReview, extractTicketKey } = require('./common/jiraHelpers.js');
 const { STATUSES, LABELS, DIAGRAM_DEFAULTS, DIAGRAM_FORMAT, JIRA_FIELDS } = require('./config.js');
 const outputFiles = require('./common/outputFiles.js');
+const tokenUsageComment = require('./common/tokenUsageComment.js');
 
 /**
  * Read enhancement data from separate files
@@ -151,6 +152,14 @@ function action(params) {
 
         const successCount = (updateResults.descriptionUpdated ? 1 : 0) +
                            (updateResults.diagramUpdated ? 1 : 0);
+
+        // Post token usage summary comments (e.g. [story_acceptance_criteria]: {...}) if any provider
+        // wrote outputs/*_usage.json during the agent run.
+        try {
+            tokenUsageComment.postTokenUsageComments(ticketKey);
+        } catch (e) {
+            console.warn('Failed to post token usage comments:', e);
+        }
 
         return {
             success: true,
