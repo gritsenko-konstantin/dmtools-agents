@@ -110,6 +110,9 @@ function buildEncodedConfig(ticketKey, rule, effectiveConfig) {
                 } else if (Array.isArray(value)) {
                     // Copy arrays (e.g. cliPrompts, cliCommands) so encoded_config carries the full original list
                     p[paramKey] = value.slice();
+                } else if (typeof value === 'object' && value !== null) {
+                    // Deep copy plain objects (e.g. cliPromptsByTracker, customParams, agentParams)
+                    p[paramKey] = JSON.parse(JSON.stringify(value));
                 }
             });
             var agentParams = (agentJson.params || {}).agentParams;
