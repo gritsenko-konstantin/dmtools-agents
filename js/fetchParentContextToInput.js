@@ -97,11 +97,21 @@ function mergeObjects(base, override) {
 
 function buildDefaultFields(projectConfig) {
     var fields = DEFAULT_FIELDS.slice();
-    var acField = projectConfig && projectConfig.jira && projectConfig.jira.fields
-        ? projectConfig.jira.fields.acceptanceCriteria
-        : null;
-    if (acField && fields.indexOf(acField) === -1) {
-        fields.splice(4, 0, acField);
+    var customFields = projectConfig && projectConfig.jira && projectConfig.jira.fields
+        ? projectConfig.jira.fields
+        : {};
+
+    for (var key in customFields) {
+        if (Object.prototype.hasOwnProperty.call(customFields, key)) {
+            var fieldName = customFields[key];
+            // Aggregate only human-readable field names; skip raw customfield_* IDs
+            // (e.g. bugSolution: 'customfield_10400' is technical, not for context)
+            if (typeof fieldName === 'string' && fieldName.indexOf('customfield_') !== 0) {
+                if (fields.indexOf(fieldName) === -1) {
+                    fields.push(fieldName);
+                }
+            }
+        }
     }
     return fields;
 }
