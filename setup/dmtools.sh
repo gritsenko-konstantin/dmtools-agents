@@ -20,11 +20,27 @@ DMTOOLS_BIN="${DMTOOLS_HOME}/bin"
 echo "🛠  DMtools ${DMTOOLS_VERSION}"
 
 # ── Already installed? ────────────────────────────────────────────────────────
+INSTALLED_VERSION=""
 if [ -x "${DMTOOLS_BIN}/dmtools" ]; then
-  echo "✅ DMtools already installed (cache hit): $(${DMTOOLS_BIN}/dmtools -v 2>/dev/null || echo "${DMTOOLS_VERSION}")"
+  INSTALLED_VERSION="$(${DMTOOLS_BIN}/dmtools -v 2>/dev/null || true)"
+fi
+
+# Normalize versions for comparison (strip leading 'v' if present)
+NORMALIZED_REQUESTED="${DMTOOLS_VERSION#v}"
+NORMALIZED_INSTALLED="${INSTALLED_VERSION#DMTools }"
+NORMALIZED_INSTALLED="${NORMALIZED_INSTALLED#v}"
+
+if [ -n "${INSTALLED_VERSION}" ] && [ "${NORMALIZED_INSTALLED}" = "${NORMALIZED_REQUESTED}" ]; then
+  echo "✅ DMtools already installed (cache hit): ${INSTALLED_VERSION}"
   register_path "${DMTOOLS_BIN}"
   export_var "DMTOOLS_HOME" "${DMTOOLS_HOME}"
   exit 0
+fi
+
+if [ -n "${INSTALLED_VERSION}" ] && [ "${NORMALIZED_INSTALLED}" != "${NORMALIZED_REQUESTED}" ]; then
+  echo "🔄 DMtools version mismatch: installed ${INSTALLED_VERSION}, requested ${DMTOOLS_VERSION}"
+  echo "📥 Re-installing DMtools ${DMTOOLS_VERSION}..."
+  rm -rf "${DMTOOLS_HOME}"
 fi
 
 # ── Install ───────────────────────────────────────────────────────────────────

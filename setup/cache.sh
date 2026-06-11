@@ -27,6 +27,11 @@ _cache_dmtools() {
   local version="${1:-${DMTOOLS_VERSION:-v1.7.200}}"
   export_var "DMTOOLS_CACHE_PATH" "${HOME}/.dmtools"
   export_var "DMTOOLS_CACHE_KEY"  "dmtools-${version}-${OS_TAG}"
+  # Restore key uses only the minor version prefix (e.g. v1.7.) so cache
+  # hits are limited to the same minor line. The install script verifies
+  # the exact version and reinstalls if the patch level differs.
+  local minor_prefix="${version%.*}."
+  export_var "DMTOOLS_CACHE_RESTORE_KEY" "dmtools-${minor_prefix}"
 }
 
 _cache_java() {
